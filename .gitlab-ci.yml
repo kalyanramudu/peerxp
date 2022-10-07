@@ -1,0 +1,62 @@
+variables:
+  MAVEN_OPTS: -Dmaven.repo.local=.m2/repository
+  CONTAINER_TEST_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  CONTAINER_NAME: $CI_REGISTRY_IMAGE:$CI_JOB_ID
+stages:
+  - package
+  - copy file
+  - Build
+  - deploy
+before_script:
+  - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+Package:
+  only:
+    changes:
+      - bin
+      - src/main
+      - Dockerfile
+      - pom.xml
+      - .vegaops-glci.yml
+
+  image: maven:latest
+  stage: package
+  script:
+    - "mvn package"
+
+    - "cp target/demo.war pkg/"
+cache:
+  paths:
+    - .m2/repository
+    - target
+    - pkg
+Build & Push:
+  only:
+    changes:
+      - bin
+      - src/main
+      - Dockerfile
+      - pom.xml
+      - .vegaops-glci.yml
+
+  image: docker:19.03.12
+  services:
+  - docker:19.03.12-dind
+  stage: Build
+  script:
+    - docker build -t $CONTAINER_TEST_IMAGE .
+    - docker push $CONTAINER_TEST_IMAGE
+deploy:
+  only:
+    changes:
+      - bin
+      - src/main
+      - Dockerfile
+      - pom.xml
+      - .vegaops-glci.yml
+  stage: deploy
+  script:
+    - docker ps -aq | xargs -r docker rm -f
+    
+    - docker pull $CONTAINER_TEST_IMAGE
+    
+    - docker run --rm -p 8080:8080 -d  $CONTAINER_TEST_IMAGE
